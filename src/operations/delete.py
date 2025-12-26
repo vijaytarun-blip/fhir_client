@@ -1,6 +1,7 @@
 """
 Delete operation for FHIR resources.
 """
+
 from typing import bool
 import logging
 
@@ -12,7 +13,7 @@ def delete_resource(fhir_client, resource_type: str, resource_id: str) -> bool:
     Delete a resource from the FHIR server.
 
     This is a wrapper function that delegates to the FHIRClient's delete_resource method.
-    
+
     Parameters:
         fhir_client: An instance of the FHIRClient to handle the request.
         resource_type: The type of FHIR resource (e.g., "Patient", "Observation").
@@ -20,7 +21,7 @@ def delete_resource(fhir_client, resource_type: str, resource_id: str) -> bool:
 
     Returns:
         True if the deletion was successful.
-        
+
     Raises:
         FHIRClientError: If the deletion fails.
     """

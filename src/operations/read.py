@@ -1,6 +1,7 @@
 """
 Read operation for FHIR resources.
 """
+
 from typing import Dict, Any
 import logging
 
@@ -12,7 +13,7 @@ def read_resource(fhir_client, resource_type: str, resource_id: str) -> Dict[str
     Read a resource from the FHIR server.
 
     This is a wrapper function that delegates to the FHIRClient's read_resource method.
-    
+
     Parameters:
         fhir_client: An instance of the FHIRClient class to handle the connection.
         resource_type: The type of FHIR resource (e.g., "Patient", "Observation").
@@ -20,7 +21,7 @@ def read_resource(fhir_client, resource_type: str, resource_id: str) -> Dict[str
 
     Returns:
         The requested FHIR resource as a dictionary.
-        
+
     Raises:
         FHIRClientError: If the read operation fails.
     """
