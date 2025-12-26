@@ -17,7 +17,7 @@ setup(
     description='A comprehensive Python client for interacting with FHIR servers',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/vijaytarun-blip',
+    url='https://github.com/vijaytarun-blip/fhir_client',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
     install_requires=[

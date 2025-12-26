@@ -2,7 +2,7 @@
 
 A comprehensive Python client for interacting with FHIR (Fast Healthcare Interoperability Resources) servers. This library provides an easy-to-use interface for performing CRUD operations, searching resources, and working with FHIR data.
 
-[![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -22,8 +22,8 @@ A comprehensive Python client for interacting with FHIR (Fast Healthcare Interop
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/fhir-client.git
-cd fhir-client
+git clone https://github.com/vijaytarun-blip/fhir_client.git
+cd fhir_client
 pip install -e .
 ```
 
