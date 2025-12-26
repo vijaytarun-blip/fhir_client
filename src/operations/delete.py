@@ -2,7 +2,6 @@
 Delete operation for FHIR resources.
 """
 
-from typing import bool
 import logging
 
 logger = logging.getLogger(__name__)
