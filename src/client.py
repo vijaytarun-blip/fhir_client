@@ -5,7 +5,7 @@ Provides a robust client for interacting with FHIR servers.
 
 import requests
 import logging
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -260,3 +260,45 @@ class FHIRClient:
         """Close the session and clean up resources."""
         self.session.close()
         logger.info("FHIR Client session closed")
+
+    def _make_request(
+        self,
+        method: str,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Make a raw HTTP request to the FHIR server.
+
+        This is a lower-level method used for FHIR operations like $lookup, $validate-code, etc.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            endpoint: URL endpoint (relative to base_url)
+            params: Query parameters
+            json_data: JSON body for POST requests
+
+        Returns:
+            Response JSON
+
+        Raises:
+            FHIRClientError: If request fails
+        """
+        url = f"{self.base_url}/{endpoint}"
+
+        try:
+            logger.debug(f"Making {method} request to {endpoint}")
+            response = self.session.request(
+                method=method,
+                url=url,
+                params=params,
+                json=json_data,
+                timeout=self.timeout,
+                verify=self.verify_ssl,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed: {str(e)}")
+            raise FHIRClientError(f"Request to {endpoint} failed: {str(e)}")

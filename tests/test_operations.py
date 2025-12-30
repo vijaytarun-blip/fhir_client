@@ -3,7 +3,7 @@ Unit tests for FHIR operations modules.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from src.client import FHIRClient
 from src.operations.create import create_resource
 from src.operations.read import read_resource

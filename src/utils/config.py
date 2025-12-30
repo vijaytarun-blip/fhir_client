@@ -19,6 +19,12 @@ class FHIRConfig:
         "test-server": "http://test.fhir.org/r4",
     }
 
+    # Default Terminology Server URLs
+    TERMINOLOGY_SERVERS = {
+        "hl7-tx": "https://tx.fhir.org/r4",  # HL7 Official
+        "snomed": "https://snowstorm.ihtsdotools.org/fhir",  # SNOMED CT
+    }
+
     def __init__(self):
         """Initialize configuration from environment variables or defaults."""
         # Primary configuration from environment variables

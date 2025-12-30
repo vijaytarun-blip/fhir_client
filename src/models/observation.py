@@ -2,7 +2,7 @@
 FHIR Observation resource model and helper functions.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 

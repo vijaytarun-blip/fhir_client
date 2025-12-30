@@ -3,7 +3,6 @@ FHIR Patient resource model and helper functions.
 """
 
 from typing import Dict, Any, List, Optional
-from datetime import datetime
 
 
 class Patient:

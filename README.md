@@ -17,6 +17,13 @@ A comprehensive Python client for interacting with FHIR (Fast Healthcare Interop
 - 🔄 **Retry Logic**: Automatic retries with exponential backoff
 - 🌐 **Public Server Support**: Works with public FHIR test servers out-of-the-box
 
+🏥 **Terminology Services**
+- 📖 **Code Lookup**: Retrieve details about clinical codes (SNOMED, LOINC, ICD-10)
+- ✅ **Code Validation**: Validate codes exist in code systems or value sets
+- 📋 **Value Set Expansion**: List all codes in a value set
+- 🔄 **Code Translation**: Map codes between different terminologies
+- 🌳 **Subsumption Testing**: Check hierarchical relationships between codes
+
 ## Installation
 
 ### From Source
@@ -84,6 +91,39 @@ heart_rate = Observation.create_vital_sign(
 created_obs = client.create_resource(heart_rate)
 ```
 
+### Working with Terminology Services
+
+```python
+from src import TerminologyService
+
+# Connect to HL7's public terminology server
+terminology = TerminologyService.create_default()
+
+# Look up a LOINC code
+display = terminology.get_display_name("loinc", "29463-7")
+print(f"Code display: {display}")  # "Body weight"
+
+# Validate a code exists
+is_valid = terminology.is_valid_code("29463-7", "loinc")
+print(f"Valid: {is_valid}")  # True
+
+# Expand a value set
+result = terminology.expand_value_set(
+    value_set_url="http://hl7.org/fhir/ValueSet/administrative-gender"
+)
+for code in result["expansion"]["contains"]:
+    print(f"  {code['code']}: {code['display']}")
+
+# Translate codes between systems (e.g., ICD-10 to SNOMED)
+translation = terminology.translate_code(
+    code="I10",
+    source_system="icd10",
+    target_system="snomed"
+)
+```
+
+For detailed terminology documentation, see [TERMINOLOGY_SERVER.md](TERMINOLOGY_SERVER.md).
+
 ## Configuration
 
 ### Environment Variables
@@ -119,6 +159,7 @@ fhir-client/
 ├── src/
 │   ├── __init__.py
 │   ├── client.py              # Main FHIRClient class
+│   ├── terminology.py         # TerminologyService for code operations
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── patient.py         # Patient resource helpers
@@ -141,9 +182,11 @@ fhir-client/
 ├── examples/
 │   ├── basic_usage.py         # Basic CRUD examples
 │   ├── observations_example.py # Observation examples
-│   └── search_example.py      # Search examples
+│   ├── search_example.py      # Search examples
+│   └── terminology_example.py # Terminology server examples
 ├── requirements.txt           # Dependencies
 ├── setup.py                   # Package setup
+├── TERMINOLOGY_SERVER.md      # Terminology documentation
 ├── LICENSE                    # MIT License
 └── README.md                  # This file
 ```
@@ -226,8 +269,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Resources
 
 - [FHIR Specification](https://www.hl7.org/fhir/)
+- [FHIR Terminology Services](https://hl7.org/fhir/terminology-service.html)
 - [HAPI FHIR Documentation](https://hapifhir.io/)
 - [FHIR Resource List](https://www.hl7.org/fhir/resourcelist.html)
+- [HL7 Terminology Server](https://tx.fhir.org)
 
 ---
 

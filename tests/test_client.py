@@ -3,7 +3,7 @@ Unit tests for FHIR Client.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from src.client import FHIRClient, FHIRClientError
 
 
