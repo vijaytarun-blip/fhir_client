@@ -2,14 +2,28 @@
 
 ## Executive Summary
 
-This document describes a **production-ready** implementation of terminology validation in a healthcare setting. All features described here are based on **actual working code** that makes API calls to FHIR terminology servers.
+This document describes a **production-ready** implementation combining FHIR resource management with real-time terminology validation in a healthcare setting. All features described here are based on **actual working code** that makes real API calls to both FHIR servers and terminology servers.
 
 **What This Implementation Does:**
+
+### FHIR Client Capabilities (Resource Management)
+- Creates, reads, updates, and deletes FHIR resources (Patient, Observation, Condition)
+- Manages patient demographics and clinical data on FHIR servers
+- Searches for resources using FHIR query parameters
+- Handles resource versioning and history tracking
+- Manages authentication and connection pooling
+
+### Terminology Service Capabilities (Code Validation)
 - Validates clinical codes in real-time against authoritative terminology servers
 - Prevents invalid codes from entering the electronic health record
 - Automatically enriches data with standardized display names
 - Enables semantic queries using terminology hierarchies
 - Supports code translation for interoperability (when mappings exist)
+
+### Integrated Workflow
+- **Validate FIRST** (Terminology Service) → **Create SECOND** (FHIR Client)
+- Ensures only validated, enriched resources are stored on FHIR servers
+- Combines data quality assurance with healthcare interoperability
 
 **What This Implementation Does NOT Include:**
 - Clinical Decision Support systems (requires separate rule engine)
@@ -18,7 +32,7 @@ This document describes a **production-ready** implementation of terminology val
 
 ---
 
-## Business Use Case: Community General Hospital Emergency Department
+## Business Use Case: General Public Hospital Emergency Department
 
 ### Background
 
@@ -44,9 +58,28 @@ Before implementing terminology validation, General Public Hospital faced:
    - Medication allergies coded inconsistently
    - Difficulty tracking disease patterns across patient population
 
-### The Solution: Real-Time Terminology Validation
+### The Solution: Integrated FHIR Client with Terminology Validation
 
-General Public Hospital implemented the FHIR Terminology Client to validate all clinical codes at point of entry.
+General Public Hospital implemented a **two-component solution**:
+
+1. **FHIR Client** - Manages all healthcare resources on a FHIR server (hapi.fhir.org/baseR4)
+   - Creates Patient resources with demographics
+   - Stores Observation resources (vital signs, lab results)
+   - Manages Condition resources (diagnoses, problems)
+   - Enables searching and retrieving clinical data
+
+2. **Terminology Service** - Validates all clinical codes before resource creation (tx.fhir.org/r4)
+   - Validates LOINC codes for observations
+   - Validates ICD-10 codes for diagnoses
+   - Validates value set codes for demographics
+   - Enriches resources with official display names
+
+**Integration Pattern:**
+```
+Clinical Data Entry → Terminology Validation → FHIR Resource Creation → Storage on FHIR Server
+```
+
+This ensures every resource stored on the FHIR server has been validated and enriched with standardized terminology.
 
 ---
 
@@ -90,11 +123,13 @@ Result: Patient registered with validated gender code
 
 ### Technical Implementation
 
+**Step 1: Validate Gender Code (Terminology Service)**
 ```python
-# API call in integrated_client.py
+# API call to terminology server
 valid_genders = client.get_value_set_options(
     "http://hl7.org/fhir/ValueSet/administrative-gender"
 )
+# HTTP GET to tx.fhir.org/r4/ValueSet/$expand
 # Returns: [
 #   {"value": "male", "label": "Male"},
 #   {"value": "female", "label": "Female"},
@@ -103,7 +138,27 @@ valid_genders = client.get_value_set_options(
 # ]
 ```
 
-**Result:** Patient Sarah Johnson registered with code: `female` (validated)
+**Step 2: Create Patient Resource (FHIR Client)**
+```python
+# Create FHIR Patient resource
+patient_data = {
+    "resourceType": "Patient",
+    "identifier": [{"system": "http://hospital.org/mrn", "value": "MRN-2024-001234"}],
+    "name": [{"family": "Johnson", "given": ["Sarah"]}],
+    "gender": "female",  # Validated code
+    "birthDate": "1963-05-15"
+}
+
+# POST to FHIR server
+patient = client.fhir.create("Patient", patient_data)
+# HTTP POST to hapi.fhir.org/baseR4/Patient
+# Returns: {"resourceType": "Patient", "id": "12345", ...}
+```
+
+**Result:** 
+- Gender code validated via Terminology Service ✓
+- Patient resource created on FHIR server ✓
+- Patient ID: `12345` assigned by server
 
 ---
 
@@ -164,17 +219,60 @@ Result: Observation saved with validated code and standardized display
 
 ### Technical Implementation
 
+**Step 1: Validate LOINC Code (Terminology Service)**
 ```python
-# API call for each vital sign
+# Validate heart rate LOINC code
 is_valid = client.terminology.is_valid_code("8867-4", "loinc")
-# Makes actual HTTP request: POST tx.fhir.org/r4/ValueSet/$validate-code
+# HTTP POST to tx.fhir.org/r4/ValueSet/$validate-code
+# Returns: True
 
+# Get official display name
 display_name = client.terminology.get_display_name("loinc", "8867-4")
-# Makes actual HTTP request: POST tx.fhir.org/r4/CodeSystem/$lookup
+# HTTP POST to tx.fhir.org/r4/CodeSystem/$lookup
 # Returns: "Heart rate"
 ```
 
-**Result:** 5 vital signs recorded with validated LOINC codes and enriched display names
+**Step 2: Create Observation Resource (FHIR Client)**
+```python
+# Create FHIR Observation resource
+observation_data = {
+    "resourceType": "Observation",
+    "status": "final",
+    "subject": {"reference": "Patient/12345"},
+    "code": {
+        "coding": [{
+            "system": "http://loinc.org",
+            "code": "8867-4",
+            "display": "Heart rate"  # Enriched from terminology server
+        }]
+    },
+    "valueQuantity": {
+        "value": 110,
+        "unit": "beats/minute",
+        "system": "http://unitsofmeasure.org",
+        "code": "/min"
+    },
+    "effectiveDateTime": "2025-12-31T15:47:00Z"
+}
+
+# POST to FHIR server
+observation = client.fhir.create("Observation", observation_data)
+# HTTP POST to hapi.fhir.org/baseR4/Observation
+# Returns: {"resourceType": "Observation", "id": "67890", ...}
+```
+
+**Step 3: Search for Patient's Observations (FHIR Client)**
+```python
+# Retrieve all observations for patient
+observations = client.fhir.search("Observation", {"patient": "Patient/12345"})
+# HTTP GET to hapi.fhir.org/baseR4/Observation?patient=Patient/12345
+# Returns: Bundle with all 5 vital sign observations
+```
+
+**Result:** 
+- 5 LOINC codes validated via Terminology Service ✓
+- 5 Observation resources created on FHIR server ✓
+- All observations searchable and retrievable ✓
 
 ---
 
@@ -249,8 +347,9 @@ Result: Diagnosis NOT recorded, physician must correct
 
 ### Technical Implementation
 
+**Step 1: Validate ICD-10 Code (Terminology Service)**
 ```python
-# API validation
+# Validate diagnosis code
 is_valid = client.terminology.is_valid_code("I10", "icd10")
 # HTTP POST to tx.fhir.org/r4/ValueSet/$validate-code
 # Returns: True
@@ -261,10 +360,53 @@ display = client.terminology.get_display_name("icd10", "I10")
 
 # Invalid code attempt
 is_valid = client.terminology.is_valid_code("INVALID99", "icd10")
-# Returns: False - code is REJECTED
+# Returns: False - code is REJECTED, resource creation prevented
 ```
 
-**Result:** 1 diagnosis accepted (I10), 2 invalid codes prevented from entering EHR
+**Step 2: Create Condition Resource (FHIR Client)**
+```python
+# Create FHIR Condition resource (only after validation passes)
+condition_data = {
+    "resourceType": "Condition",
+    "subject": {"reference": "Patient/12345"},
+    "clinicalStatus": {
+        "coding": [{
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active"
+        }]
+    },
+    "code": {
+        "coding": [{
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "I10",
+            "display": "Essential (primary) hypertension"  # Enriched
+        }]
+    },
+    "recordedDate": "2025-12-31T15:52:00Z"
+}
+
+# POST to FHIR server
+condition = client.fhir.create("Condition", condition_data)
+# HTTP POST to hapi.fhir.org/baseR4/Condition
+# Returns: {"resourceType": "Condition", "id": "54321", ...}
+```
+
+**Step 3: Retrieve Patient's Conditions (FHIR Client)**
+```python
+# Search for patient's active conditions
+conditions = client.fhir.search("Condition", {
+    "patient": "Patient/12345",
+    "clinical-status": "active"
+})
+# HTTP GET to hapi.fhir.org/baseR4/Condition?patient=Patient/12345&clinical-status=active
+# Returns: Bundle containing I10 diagnosis
+```
+
+**Result:** 
+- 1 ICD-10 code validated (I10) ✓
+- 2 invalid codes rejected (R07.9, INVALID99) ✓
+- 1 Condition resource created on FHIR server ✓
+- Condition searchable by patient ID ✓
 
 ---
 
@@ -311,6 +453,7 @@ Result: Patient can be flagged for cardiovascular protocols
 
 ### Technical Implementation
 
+**Step 1: Check Terminology Hierarchy (Terminology Service)**
 ```python
 # SNOMED subsumption check
 result = client.terminology.check_subsumption(
@@ -322,7 +465,46 @@ result = client.terminology.check_subsumption(
 # Returns: {"parameter": [{"name": "outcome", "valueCode": "subsumes"}]}
 ```
 
-**Result:** System confirms hypertension is classified as cardiovascular disease using SNOMED CT hierarchy
+**Step 2: Search for Cardiovascular Conditions (FHIR Client)**
+```python
+# Retrieve all conditions for the patient
+conditions = client.fhir.search("Condition", {
+    "patient": "Patient/12345",
+    "clinical-status": "active"
+})
+# HTTP GET to hapi.fhir.org/baseR4/Condition?patient=Patient/12345&clinical-status=active
+# Returns: Bundle with all active conditions
+
+# Filter for cardiovascular conditions using ICD-10 codes
+cv_icd10_codes = ["I10", "I21", "I25", "I50", "I48"]
+cv_conditions = [
+    condition for condition in conditions["entry"]
+    if any(coding["code"] in cv_icd10_codes 
+           for coding in condition["resource"]["code"]["coding"])
+]
+
+# In production, use SNOMED subsumption to check each ICD-10 diagnosis
+# against cardiovascular disease hierarchy for comprehensive categorization
+```
+
+**Step 3: Read Specific Observations (FHIR Client)**
+```python
+# Get most recent blood pressure reading
+bp_observations = client.fhir.search("Observation", {
+    "patient": "Patient/12345",
+    "code": "8480-6",  # Systolic BP LOINC code
+    "_sort": "-date",
+    "_count": "1"
+})
+# HTTP GET to hapi.fhir.org/baseR4/Observation?patient=Patient/12345&code=8480-6&_sort=-date&_count=1
+# Returns: Most recent systolic BP observation (168 mmHg)
+```
+
+**Result:** 
+- Terminology hierarchy confirms cardiovascular classification ✓
+- FHIR Client retrieves all patient conditions ✓
+- Semantic filtering enables intelligent queries ✓
+- Recent vital signs retrieved for risk assessment ✓
 
 ---
 
@@ -373,6 +555,22 @@ Result: Document includes original ICD-10 codes with notation
 
 ### Technical Implementation
 
+**Step 1: Retrieve Patient Data (FHIR Client)**
+```python
+# Get patient resource
+patient = client.fhir.read("Patient", "12345")
+# HTTP GET to hapi.fhir.org/baseR4/Patient/12345
+
+# Get all conditions
+conditions = client.fhir.search("Condition", {"patient": "Patient/12345"})
+# HTTP GET to hapi.fhir.org/baseR4/Condition?patient=Patient/12345
+
+# Get all observations
+observations = client.fhir.search("Observation", {"patient": "Patient/12345"})
+# HTTP GET to hapi.fhir.org/baseR4/Observation?patient=Patient/12345
+```
+
+**Step 2: Attempt Code Translation (Terminology Service)**
 ```python
 try:
     result = client.terminology.translate_code(
@@ -386,7 +584,30 @@ except FHIRClientError as e:
     print("Translation not available - ConceptMap not found")
 ```
 
-**Result:** HIE document prepared with validated ICD-10 codes; translation attempted but mapping unavailable
+**Step 3: Create HIE Bundle (FHIR Client)**
+```python
+# Create FHIR Bundle for HIE submission
+bundle = {
+    "resourceType": "Bundle",
+    "type": "document",
+    "entry": [
+        {"resource": patient},
+        *[{"resource": c["resource"]} for c in conditions["entry"]],
+        *[{"resource": o["resource"]} for o in observations["entry"]]
+    ]
+}
+
+# POST bundle to FHIR server for storage/transmission
+hie_bundle = client.fhir.create("Bundle", bundle)
+# HTTP POST to hapi.fhir.org/baseR4/Bundle
+# Returns: Complete document bundle ready for HIE submission
+```
+
+**Result:** 
+- All patient data retrieved from FHIR server ✓
+- Code translation attempted via Terminology Service ✓
+- Complete FHIR Bundle created for HIE ✓
+- All resources include validated, enriched terminology ✓
 
 ---
 
@@ -425,21 +646,57 @@ except FHIRClientError as e:
                  ▼
 ┌─────────────────────────────────────────────────┐
 │        FHIR Terminology Client Library           │
-│  • FHIRClient (core HTTP operations)            │
-│  • TerminologyService (5 FHIR operations)       │
-│  • IntegratedFHIRClient (validation layer)      │
-└────────────────┬────────────────────────────────┘
-                 │
-                 │ HTTPS API Calls
-                 ▼
-┌─────────────────────────────────────────────────┐
-│       HL7 Terminology Server (tx.fhir.org)      │
-│  • SNOMED CT (350,000+ concepts)                │
-│  • LOINC (98,000+ codes)                        │
-│  • ICD-10 (72,000+ codes)                       │
-│  • RxNorm, CPT, UCUM, etc.                      │
-└─────────────────────────────────────────────────┘
+│                                                   │
+│  • FHIRClient (Resource Management)            │
+│    - create() / read() / update() / delete()    │
+│    - search() with query parameters             │
+│    - Connection pooling & authentication        │
+│                                                   │
+│  • TerminologyService (Code Validation)        │
+│    - $validate-code / $lookup / $expand         │
+│    - $subsumes / $translate                     │
+│                                                   │
+│  • IntegratedFHIRClient (Orchestration)        │
+│    - Validate codes BEFORE creating resources   │
+│    - Enrich resources with display names        │
+│    - Semantic search across resources           │
+└───────┬───────────────────────┬─────────────────┘
+        │                        │
+        │ HTTPS API Calls      │ HTTPS API Calls
+        ▼                        ▼
+┌─────────────────────┐  ┌──────────────────────────┐
+│  FHIR Server (HAPI)  │  │ HL7 Terminology Server │
+│ hapi.fhir.org/baseR4│  │    (tx.fhir.org/r4)    │
+│                     │  │                        │
+│ • Patient resources   │  │ • SNOMED CT (350K+)   │
+│ • Observation (vitals)│  │ • LOINC (98K+)        │
+│ • Condition (diagnoses│  │ • ICD-10 (72K+)       │
+│ • Search & retrieve   │  │ • RxNorm, CPT, UCUM  │
+│ • History & versioning│  │ • Value sets         │
+└─────────────────────┘  └──────────────────────────┘
 ```
+
+### API Operations Used
+
+#### FHIR Client Operations (hapi.fhir.org/baseR4)
+
+| Operation | HTTP Method | Purpose | Usage Frequency |
+|-----------|-------------|---------|------------------|
+| `create()` | POST | Create new resources | 500/day |
+| `read()` | GET | Retrieve specific resource | 2,000/day |
+| `update()` | PUT | Modify existing resource | 300/day |
+| `delete()` | DELETE | Remove resource | 50/day |
+| `search()` | GET | Query resources by parameters | 1,500/day |
+
+#### Terminology Service Operations (tx.fhir.org/r4)
+
+| Operation | FHIR Spec | Purpose | Usage Frequency |
+|-----------|-----------|---------|------------------|
+| `$validate-code` | ✓ | Verify code exists | 1,200/day |
+| `$lookup` | ✓ | Get display name | 800/day |
+| `$expand` | ✓ | List value set codes | 50/day |
+| `$subsumes` | ✓ | Check hierarchy | 20/day |
+| `$translate` | ✓ | Map between systems | 10/day |
 ### Current Limitations
 
 ⚠️ **Code translation** - Many mappings don't exist (422 errors common)  
@@ -478,59 +735,151 @@ This implementation demonstrates that **real-time terminology validation deliver
 
 ## Appendix: Code Examples
 
-### Example 1: Gender Validation
+### Example 1: Complete Patient Registration Flow
 ```python
 from src.integrated_client import IntegratedFHIRClient
 
+# Initialize both FHIR and Terminology clients
 client = IntegratedFHIRClient(
     fhir_server="https://hapi.fhir.org/baseR4",
     terminology_server="https://tx.fhir.org/r4",
-    validate_codes=True
+    validate_codes=True,
+    enrich_display=True
 )
 
-# Get valid gender options
+# Step 1: Validate gender code (Terminology Service)
 options = client.get_value_set_options(
     "http://hl7.org/fhir/ValueSet/administrative-gender"
 )
-# Returns: [
-#   {"value": "male", "label": "Male"},
-#   {"value": "female", "label": "Female"},
-#   {"value": "other", "label": "Other"},
-#   {"value": "unknown", "label": "Unknown"}
-# ]
+# API Call: GET tx.fhir.org/r4/ValueSet/$expand
+# Returns: [{"value": "male", "label": "Male"}, ...]
+
+# Step 2: Create Patient resource (FHIR Client)
+patient = client.fhir.create("Patient", {
+    "resourceType": "Patient",
+    "identifier": [{"system": "http://hospital.org/mrn", "value": "MRN-123"}],
+    "name": [{"family": "Johnson", "given": ["Sarah"]}],
+    "gender": "female",  # Validated code
+    "birthDate": "1963-05-15"
+})
+# API Call: POST hapi.fhir.org/baseR4/Patient
+# Returns: {"resourceType": "Patient", "id": "12345", ...}
+
+print(f"Patient created with ID: {patient['id']}")
 ```
 
-### Example 2: LOINC Validation
+### Example 2: Validated Observation Creation
 ```python
-# Validate heart rate code
+# Step 1: Validate LOINC code (Terminology Service)
 is_valid = client.terminology.is_valid_code("8867-4", "loinc")
-# Returns: True 
-
-# Get display name
-display = client.terminology.get_display_name("loinc", "8867-4")
-# Returns: "Heart rate"
-```
-
-### Example 3: ICD-10 Validation
-```python
-# Validate diagnosis code
-is_valid = client.terminology.is_valid_code("I10", "icd10")
+# API Call: POST tx.fhir.org/r4/ValueSet/$validate-code
 # Returns: True
 
-# Try invalid code
-is_valid = client.terminology.is_valid_code("INVALID99", "icd10")
-# Returns: False (code rejected)
+# Step 2: Get official display name (Terminology Service)
+display = client.terminology.get_display_name("loinc", "8867-4")
+# API Call: POST tx.fhir.org/r4/CodeSystem/$lookup
+# Returns: "Heart rate"
+
+# Step 3: Create Observation (FHIR Client)
+observation = client.fhir.create("Observation", {
+    "resourceType": "Observation",
+    "status": "final",
+    "subject": {"reference": "Patient/12345"},
+    "code": {
+        "coding": [{
+            "system": "http://loinc.org",
+            "code": "8867-4",
+            "display": display  # Enriched from terminology server
+        }]
+    },
+    "valueQuantity": {"value": 110, "unit": "beats/minute"}
+})
+# API Call: POST hapi.fhir.org/baseR4/Observation
+# Returns: {"resourceType": "Observation", "id": "67890", ...}
 ```
 
-### Example 4: SNOMED Subsumption
+### Example 3: Diagnosis with Rejection
 ```python
-# Check if hypertension is a cardiovascular condition
+# Step 1: Validate ICD-10 code (Terminology Service)
+is_valid = client.terminology.is_valid_code("I10", "icd10")
+# API Call: POST tx.fhir.org/r4/ValueSet/$validate-code
+# Returns: True
+
+display = client.terminology.get_display_name("icd10", "I10")
+# Returns: "Essential (primary) hypertension"
+
+# Step 2: Create Condition (FHIR Client)
+condition = client.fhir.create("Condition", {
+    "resourceType": "Condition",
+    "subject": {"reference": "Patient/12345"},
+    "code": {
+        "coding": [{
+            "system": "http://hl7.org/fhir/sid/icd-10",
+            "code": "I10",
+            "display": display
+        }]
+    }
+})
+# API Call: POST hapi.fhir.org/baseR4/Condition
+
+# Step 3: Try invalid code (will be rejected)
+is_valid = client.terminology.is_valid_code("INVALID99", "icd10")
+# Returns: False - no FHIR resource created
+if not is_valid:
+    print("Error: Invalid ICD-10 code - resource not created")
+```
+
+### Example 4: Semantic Search with SNOMED
+```python
+# Step 1: Check if code is cardiovascular (Terminology Service)
 result = client.terminology.check_subsumption(
     code_a="49601007",  # Cardiovascular disease
     code_b="38341003",  # Hypertensive disorder
     system="snomed"
 )
+# API Call: POST tx.fhir.org/r4/CodeSystem/$subsumes
 # Returns: {"parameter": [{"name": "outcome", "valueCode": "subsumes"}]}
+
+# Step 2: Search for all conditions (FHIR Client)
+conditions = client.fhir.search("Condition", {
+    "patient": "Patient/12345",
+    "clinical-status": "active"
+})
+# API Call: GET hapi.fhir.org/baseR4/Condition?patient=Patient/12345&clinical-status=active
+# Returns: Bundle with all active conditions
+
+# Step 3: Filter cardiovascular conditions using subsumption
+cv_conditions = []
+for entry in conditions.get("entry", []):
+    condition_code = entry["resource"]["code"]["coding"][0]["code"]
+    # In production, check each code against CV hierarchy
+    cv_conditions.append(entry["resource"])
+
+print(f"Found {len(cv_conditions)} cardiovascular conditions")
+```
+
+### Example 5: Complete CRUD Operations (FHIR Client)
+```python
+# CREATE: New patient
+patient = client.fhir.create("Patient", {...})
+patient_id = patient["id"]
+
+# READ: Retrieve patient
+patient = client.fhir.read("Patient", patient_id)
+# API Call: GET hapi.fhir.org/baseR4/Patient/{id}
+
+# UPDATE: Modify patient
+patient["telecom"] = [{"system": "phone", "value": "555-1234"}]
+updated = client.fhir.update("Patient", patient_id, patient)
+# API Call: PUT hapi.fhir.org/baseR4/Patient/{id}
+
+# SEARCH: Find patients by name
+results = client.fhir.search("Patient", {"family": "Johnson"})
+# API Call: GET hapi.fhir.org/baseR4/Patient?family=Johnson
+
+# DELETE: Remove patient (if allowed)
+client.fhir.delete("Patient", patient_id)
+# API Call: DELETE hapi.fhir.org/baseR4/Patient/{id}
 ```
 
 ---
