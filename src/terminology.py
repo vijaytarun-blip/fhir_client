@@ -10,7 +10,7 @@ Common Terminology Servers:
 """
 
 import logging
-from typing import Dict, Optional, Any, List, Union
+from typing import Dict, Optional, Any, List
 from .client import FHIRClient, FHIRClientError
 
 logger = logging.getLogger(__name__)
